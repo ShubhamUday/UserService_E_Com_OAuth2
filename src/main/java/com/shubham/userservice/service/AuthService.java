@@ -9,6 +9,8 @@ import com.shubham.userservice.model.SessionStatus;
 import com.shubham.userservice.model.User;
 import com.shubham.userservice.repository.SessionRepository;
 import com.shubham.userservice.repository.UserRepository;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.MacAlgorithm;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -17,10 +19,9 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.MultiValueMapAdapter;
 
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Optional;
+import javax.crypto.SecretKey;
+import java.time.LocalDate;
+import java.util.*;
 
 @Service
 public class AuthService {
@@ -54,9 +55,26 @@ public class AuthService {
         if(!bCryptPasswordEncoder.matches(password, user.getPassword())){
             throw new InvalidCredentialException("Invalid Credentials");
         }
-        String token = RandomStringUtils.randomAlphanumeric(30);
+//        String token = RandomStringUtils.randomAlphanumeric(30);
+
+//        Token generation
+        MacAlgorithm alg = Jwts.SIG.HS256;  //HS256 algo added for JWT
+        SecretKey key = alg.key().build();  // Generating the secret key
+
+//        Start adding the claims
+        Map<String, Object> jsonForJWT = new HashMap<>();
+        jsonForJWT.put("email", user.getEmail());
+        jsonForJWT.put("roles", user.getRoles());
+        jsonForJWT.put("createdAt", new Date());
+        jsonForJWT.put("expiryAt", new Date(LocalDate.now().plusDays(3).toEpochDay()));
+
+        String token = Jwts.builder()
+                .claims(jsonForJWT)  // added the claims
+                .signWith(key, alg)  //added the algo and key
+                .compact();         //building the token
 
 //        Session creation
+
         Session session = new Session();
         session.setSessionStatus(SessionStatus.ACTIVE);
         session.setToken(token);
@@ -69,11 +87,12 @@ public class AuthService {
 
         MultiValueMapAdapter<String, String> headers = new
                 MultiValueMapAdapter<>(new HashMap<>());
-        headers.add(HttpHeaders.SET_COOKIE,"auth-token:"+ token);
+//        headers.add(HttpHeaders.SET_COOKIE,"auth-token:"+ token);
 //        headers.add(HttpHeaders.ACCEPT,"application/json"+ token);
-        ResponseEntity<UserDto> response = new ResponseEntity<>(userDto, headers, HttpStatus.OK);
+        headers.add(HttpHeaders.SET_COOKIE, token);
+//        ResponseEntity<UserDto> response = new ResponseEntity<>(userDto, headers, HttpStatus.OK);
 
-        return response;
+        return new ResponseEntity<>(userDto, headers, HttpStatus.OK);
     }
     public ResponseEntity<Void> logout(String token, Long userId){
         Optional<Session> sessionOptional = sessionRepository.findByTokenAndUser_Id(token, userId);
@@ -99,8 +118,8 @@ public class AuthService {
     public SessionStatus validate(String token, Long userId){
         Optional<Session> sessionOptional = sessionRepository.findByTokenAndUser_Id(token, userId);
 
-        if (sessionOptional.isEmpty()) {
-            return null;
+        if (sessionOptional.isEmpty() || sessionOptional.get().getSessionStatus().equals(SessionStatus.ENDED)) {
+            throw new InvalidCredentialException("Token is invalid");
         }
         return SessionStatus.ACTIVE;
     }

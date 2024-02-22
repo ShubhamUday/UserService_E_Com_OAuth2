@@ -24,9 +24,9 @@ public class AuthController {
         return authService.login(requestDto.getEmail(), requestDto.getPassword());
     }
 
-    @PostMapping("/logout")
-    public ResponseEntity<Void> logout(@RequestBody LogoutRequestDto requestDto){
-        return authService.logout(requestDto.getToken(), requestDto.getUserId());
+    @PostMapping("/logout/{id}")
+    public ResponseEntity<Void> logout(@PathVariable("id") Long userId, @RequestHeader("token") String token){
+        return authService.logout(token, userId);
     }
 
     @PostMapping("/signup")
